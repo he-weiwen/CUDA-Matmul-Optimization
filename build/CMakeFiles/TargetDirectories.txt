@@ -1,0 +1,3 @@
+/home/whe302/cuda/my_kernels/build/CMakeFiles/sgemm.dir
+/home/whe302/cuda/my_kernels/build/CMakeFiles/edit_cache.dir
+/home/whe302/cuda/my_kernels/build/CMakeFiles/rebuild_cache.dir

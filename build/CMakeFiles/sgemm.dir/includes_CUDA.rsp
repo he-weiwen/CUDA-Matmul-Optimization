@@ -1,0 +1,1 @@
+-I/home/whe302/cuda/my_kernels/src -isystem "/usr/local/cuda/targets/x86_64-linux/include"

@@ -1,4 +1,4 @@
-CMakeFiles/sgemm.dir/sgemm.cu.o : /home/whe302/cuda/my_kernels/sgemm.cu \
+CMakeFiles/sweep.dir/sweep.cu.o : /home/whe302/cuda/my_kernels/sweep.cu \
     /usr/include/stdc-predef.h \
     /usr/local/cuda/targets/x86_64-linux/include/cuda_runtime.h \
     /usr/local/cuda/targets/x86_64-linux/include/crt/host_config.h \
@@ -210,11 +210,4 @@ CMakeFiles/sgemm.dir/sgemm.cu.o : /home/whe302/cuda/my_kernels/sgemm.cu \
     /usr/local/cuda/targets/x86_64-linux/include/cuda_fp16.hpp \
     /usr/local/cuda/targets/x86_64-linux/include/cuda_bf16.h \
     /usr/local/cuda/targets/x86_64-linux/include/cuda_bf16.hpp \
-    /home/whe302/cuda/my_kernels/src/kernels.cuh \
-    /home/whe302/cuda/my_kernels/src/1_naive.cuh \
-    /home/whe302/cuda/my_kernels/src/2_coalesced.cuh \
-    /home/whe302/cuda/my_kernels/src/3_shared_mem.cuh \
-    /home/whe302/cuda/my_kernels/src/4_1d_blocktiling.cuh \
-    /home/whe302/cuda/my_kernels/src/5_2d_blocktiling.cuh \
-    /home/whe302/cuda/my_kernels/src/6_vectorized.cuh \
     /home/whe302/cuda/my_kernels/src/9_autotuned.cuh

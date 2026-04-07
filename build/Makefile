@@ -129,6 +129,19 @@ sgemm/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sgemm.dir/build.make CMakeFiles/sgemm.dir/build
 .PHONY : sgemm/fast
 
+#=============================================================================
+# Target rules for targets named sweep
+
+# Build rule for target.
+sweep: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 sweep
+.PHONY : sweep
+
+# fast build rule for target.
+sweep/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sweep.dir/build.make CMakeFiles/sweep.dir/build
+.PHONY : sweep/fast
+
 sgemm.o: sgemm.cu.o
 .PHONY : sgemm.o
 
@@ -153,6 +166,30 @@ sgemm.cu.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sgemm.dir/build.make CMakeFiles/sgemm.dir/sgemm.cu.s
 .PHONY : sgemm.cu.s
 
+sweep.o: sweep.cu.o
+.PHONY : sweep.o
+
+# target to build an object file
+sweep.cu.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sweep.dir/build.make CMakeFiles/sweep.dir/sweep.cu.o
+.PHONY : sweep.cu.o
+
+sweep.i: sweep.cu.i
+.PHONY : sweep.i
+
+# target to preprocess a source file
+sweep.cu.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sweep.dir/build.make CMakeFiles/sweep.dir/sweep.cu.i
+.PHONY : sweep.cu.i
+
+sweep.s: sweep.cu.s
+.PHONY : sweep.s
+
+# target to generate assembly for a file
+sweep.cu.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sweep.dir/build.make CMakeFiles/sweep.dir/sweep.cu.s
+.PHONY : sweep.cu.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -162,9 +199,13 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... sgemm"
+	@echo "... sweep"
 	@echo "... sgemm.o"
 	@echo "... sgemm.i"
 	@echo "... sgemm.s"
+	@echo "... sweep.o"
+	@echo "... sweep.i"
+	@echo "... sweep.s"
 .PHONY : help
 
 

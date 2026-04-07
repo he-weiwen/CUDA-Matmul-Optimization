@@ -22,3 +22,8 @@ target_link_libraries(sgemm CUDA::cublas)
 
 # Include directories
 target_include_directories(sgemm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Parameter sweep executable
+add_executable(sweep sweep.cu)
+target_link_libraries(sweep CUDA::cublas)
+target_include_directories(sweep PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

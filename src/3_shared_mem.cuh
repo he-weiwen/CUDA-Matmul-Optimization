@@ -33,15 +33,15 @@
  * 3. Write final results to C
  */
 
-#define BM 32  // Block tile size in M dimension
-#define BN 32  // Block tile size in N dimension
-#define BK 32  // Block tile size in K dimension
+#define SM_BM 32  // Block tile size in M dimension
+#define SM_BN 32  // Block tile size in N dimension
+#define SM_BK 32  // Block tile size in K dimension
 
 __global__ void sgemm_shared_mem(int M, int N, int K, float alpha,
                                   const float *A, const float *B, float beta, float *C) {
     // Shared memory for tiles of A and B
-    __shared__ float As[BM][BK];
-    __shared__ float Bs[BK][BN];
+    __shared__ float As[SM_BM][SM_BK];
+    __shared__ float Bs[SM_BK][SM_BN];
 
     // Block position in the output matrix
     const int bx = blockIdx.x;  // Column block index
@@ -52,15 +52,15 @@ __global__ void sgemm_shared_mem(int M, int N, int K, float alpha,
     const int ty = threadIdx.y;  // Row within block (0..BM-1)
 
     // Global position this thread is responsible for in C
-    const int row = by * BM + ty;
-    const int col = bx * BN + tx;
+    const int row = by * SM_BM + ty;
+    const int col = bx * SM_BN + tx;
 
     // Accumulator for the dot product
     float sum = 0.0f;
 
     // Loop over tiles along the K dimension
     // Each iteration processes BK elements of the dot product
-    for (int bk = 0; bk < K; bk += BK) {
+    for (int bk = 0; bk < K; bk += SM_BK) {
         // TODO: Cooperatively load tile of A into shared memory
         // Each thread loads one element: As[ty][tx] = A[row][bk + tx]
         // But we need to handle bounds: what if (bk + tx) >= K or row >= M?
@@ -95,7 +95,7 @@ __global__ void sgemm_shared_mem(int M, int N, int K, float alpha,
 
         // TODO: Compute partial dot product using shared memory
         // sum += As[ty][0] * Bs[0][tx] + As[ty][1] * Bs[1][tx] + ... + As[ty][BK-1] * Bs[BK-1][tx]
-        for (int k = 0; k < BK; k++) {
+        for (int k = 0; k < SM_BK; k++) {
             sum += As[ty][k] * Bs[k][tx];
         }
 

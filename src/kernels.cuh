@@ -10,7 +10,7 @@
 #include "5_2d_blocktiling.cuh"
 #include "6_vectorized.cuh"
 #include "9_autotuned.cuh"
-// #include "10_warptiling.cuh"
+#include "10_warptiling.cuh"
 
 #define CEIL_DIV(M, N) (((M) + (N) - 1) / (N))
 
@@ -89,6 +89,20 @@ void run_kernel(int kernel_num, int M, int N, int K,
             dim3 blockDim9(256);
             dim3 gridDim9(CEIL_DIV(N, BN9), CEIL_DIV(M, BM9));
             sgemm_autotuned<BM9, BN9, BK9, TM9, TN9><<<gridDim9, blockDim9>>>(M, N, K, alpha, A, B, beta, C);
+            break;
+        }
+
+        case 10: {
+            // Kernel 10: Warptiling
+            // Block tile: 128×128, Warp tile: 64×64, Thread tile: 8×4
+            // 4 warps × 32 threads = 128 threads
+            const int BM10=128, BN10=128, BK10=16;
+            const int WM10=64, WN10=64, WNITER10=2;
+            const int TM10=8, TN10=4, NT10=128;
+            dim3 blockDim10(NT10);
+            dim3 gridDim10(CEIL_DIV(N, BN10), CEIL_DIV(M, BM10));
+            sgemm_warptiling<BM10, BN10, BK10, WM10, WN10, WNITER10, TM10, TN10, NT10>
+                <<<gridDim10, blockDim10>>>(M, N, K, alpha, A, B, beta, C);
             break;
         }
 

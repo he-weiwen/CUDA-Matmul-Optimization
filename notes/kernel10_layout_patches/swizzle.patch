@@ -1,0 +1,36 @@
+--- a/src/10_warptiling.cuh
++++ b/src/10_warptiling.cuh
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <cute/layout.hpp>
++#include <cute/swizzle_layout.hpp>
+ 
+ /*
+  * Kernel 10: Warptiling
+@@ -47,8 +48,10 @@
+                               int innerRowA, int innerColA,
+                               int innerRowB, int innerColB) {
+     using namespace cute;
+-    constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
+-                                      make_stride(Int<1>{}, Int<BM>{}));
++    static_assert(BM == 128 && BK == 16, "Swizzle is specific to this tile");
++    constexpr auto smemA = composition(Swizzle<2, 3, 6>{},
++        make_layout(make_shape(Int<BM>{}, Int<BK>{}),
++                    make_stride(Int<1>{}, Int<BM>{})));
+     constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
+                                       make_stride(Int<BN>{}, Int<1>{}));
+     /*
+@@ -86,8 +89,10 @@
+                                  const uint threadRowInWarp,
+                                  const uint threadColInWarp) {
+     using namespace cute;
+-    constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
+-                                      make_stride(Int<1>{}, Int<BM>{}));
++    static_assert(BM == 128 && BK == 16, "Swizzle is specific to this tile");
++    constexpr auto smemA = composition(Swizzle<2, 3, 6>{},
++        make_layout(make_shape(Int<BM>{}, Int<BK>{}),
++                    make_stride(Int<1>{}, Int<BM>{})));
+     constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
+                                       make_stride(Int<BN>{}, Int<1>{}));
+     // (subtile, element) -> register index; packed within each thread.

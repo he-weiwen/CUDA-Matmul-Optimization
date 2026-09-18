@@ -47,8 +47,9 @@ __device__ void loadFromGmem(int N, int K,
                               int innerRowA, int innerColA,
                               int innerRowB, int innerColB) {
     using namespace cute;
+    // Four padding floats preserve 16-byte alignment and reduce A-store bank conflicts.
     constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
-                                      make_stride(Int<1>{}, Int<BM>{}));
+                                      make_stride(Int<1>{}, Int<BM + 4>{}));
     constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
                                       make_stride(Int<BN>{}, Int<1>{}));
     /*
@@ -86,8 +87,9 @@ __device__ void processFromSmem(float *regM, float *regN, float *threadResults,
                                  const uint threadRowInWarp,
                                  const uint threadColInWarp) {
     using namespace cute;
+    // Four padding floats preserve 16-byte alignment and reduce A-store bank conflicts.
     constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
-                                      make_stride(Int<1>{}, Int<BM>{}));
+                                      make_stride(Int<1>{}, Int<BM + 4>{}));
     constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
                                       make_stride(Int<BN>{}, Int<1>{}));
     // (subtile, element) -> register index; packed within each thread.
@@ -189,7 +191,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
     // ─── Shared memory ───────────────────────────────────────────────
 
-    __shared__ float As[BM * BK];
+    __shared__ float As[(BM + 4) * BK];
     __shared__ float Bs[BK * BN];
 
     // ─── Advance pointers ────────────────────────────────────────────

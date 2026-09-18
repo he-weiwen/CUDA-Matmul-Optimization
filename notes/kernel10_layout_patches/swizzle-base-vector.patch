@@ -1,0 +1,62 @@
+--- a/src/10_warptiling.cuh
++++ b/src/10_warptiling.cuh
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <cute/layout.hpp>
++#include <cute/swizzle_layout.hpp>
+ 
+ /*
+  * Kernel 10: Warptiling
+@@ -47,8 +48,10 @@
+                               int innerRowA, int innerColA,
+                               int innerRowB, int innerColB) {
+     using namespace cute;
+-    constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
+-                                      make_stride(Int<1>{}, Int<BM>{}));
++    static_assert(BM == 128 && BK == 16, "Swizzle is specific to this tile");
++    constexpr auto smemA = composition(Swizzle<2, 3, 6>{},
++        make_layout(make_shape(Int<BM>{}, Int<BK>{}),
++                    make_stride(Int<1>{}, Int<BM>{})));
+     constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
+                                       make_stride(Int<BN>{}, Int<1>{}));
+     /*
+@@ -86,8 +89,10 @@
+                                  const uint threadRowInWarp,
+                                  const uint threadColInWarp) {
+     using namespace cute;
+-    constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
+-                                      make_stride(Int<1>{}, Int<BM>{}));
++    static_assert(BM == 128 && BK == 16, "Swizzle is specific to this tile");
++    constexpr auto smemA = composition(Swizzle<2, 3, 6>{},
++        make_layout(make_shape(Int<BM>{}, Int<BK>{}),
++                    make_stride(Int<1>{}, Int<BM>{})));
+     constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
+                                       make_stride(Int<BN>{}, Int<1>{}));
+     // (subtile, element) -> register index; packed within each thread.
+@@ -104,12 +109,23 @@
+                                      make_stride(Int<WSUBN>{}, Int<1>{}));
+     const uint rowBase = warpRow * WM + threadRowInWarp * TM;
+     const uint colBase = warpCol * WN + threadColInWarp * TN;
++    // Swizzle changes only row bits 3 and 4. Each thread's aligned 8-row
++    // patch stays contiguous; the second patch is 32 rows away.
++    static_assert(TM == 8 && WSUBM == 32, "Swizzled patch-base addressing requires this layout");
+     for (uint dotIdx = 0; dotIdx < BK; ++dotIdx) {
++        const auto smemRowBase = smemA(rowBase, dotIdx);
+         // ── Phase 1: Load ALL regM values for all WMITER subtile rows ──
+         // This front-loads the SMEM reads so FMAs can overlap with loads
+         for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
+-            for (uint i = 0; i < TM; ++i) {
+-                regM[regA(wSubRowIdx, i)] = As[smemA(rowBase + rows(wSubRowIdx, i), dotIdx)];
++            // This swizzle preserves low three address bits, so each float4 is contiguous.
++            static_assert(TM % 4 == 0, "Vector loads require full groups of four");
++            for (uint i = 0; i < TM; i += 4) {
++                const float4 values = *reinterpret_cast<const float4 *>(
++                    &As[smemRowBase + rows(wSubRowIdx, i)]);
++                regM[regA(wSubRowIdx, i + 0)] = values.x;
++                regM[regA(wSubRowIdx, i + 1)] = values.y;
++                regM[regA(wSubRowIdx, i + 2)] = values.z;
++                regM[regA(wSubRowIdx, i + 3)] = values.w;
+             }
+         }
+ 

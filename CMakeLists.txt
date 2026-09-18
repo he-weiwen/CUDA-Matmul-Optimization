@@ -20,6 +20,14 @@ set(CMAKE_CUDA_ARCHITECTURES ${CUDA_COMPUTE_CAPABILITY})
 add_executable(sgemm sgemm.cu)
 target_link_libraries(sgemm CUDA::cublas)
 
+# CuTe is header-only; kernel 10 uses only its coordinate layout abstraction.
+set(CUTLASS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cutedsl/cutlass/include"
+    CACHE PATH "CUTLASS include directory containing cute/layout.hpp")
+if(NOT EXISTS "${CUTLASS_INCLUDE_DIR}/cute/layout.hpp")
+    message(FATAL_ERROR "Set CUTLASS_INCLUDE_DIR to a CUTLASS include directory containing cute/layout.hpp")
+endif()
+target_include_directories(sgemm SYSTEM PRIVATE "${CUTLASS_INCLUDE_DIR}")
+
 # Include directories
 target_include_directories(sgemm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 

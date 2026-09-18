@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cute/layout.hpp>
+
 /*
  * Kernel 10: Warptiling
  *
@@ -44,6 +46,11 @@ __device__ void loadFromGmem(int N, int K,
                               float *As, float *Bs,
                               int innerRowA, int innerColA,
                               int innerRowB, int innerColB) {
+    using namespace cute;
+    constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
+                                      make_stride(Int<1>{}, Int<BM>{}));
+    constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
+                                      make_stride(Int<BN>{}, Int<1>{}));
     /*
       each thread load 4 contiguous elements to shared memory
         A: transposed
@@ -52,15 +59,15 @@ __device__ void loadFromGmem(int N, int K,
     for (uint offset = 0; offset + rowStrideA <= BM; offset += rowStrideA) {
         const float4 tmp = reinterpret_cast<const float4 *>(
             &A[(innerRowA + offset) * K + innerColA * 4])[0];
-        As[(innerColA * 4 + 0) * BM + innerRowA + offset] = tmp.x;
-        As[(innerColA * 4 + 1) * BM + innerRowA + offset] = tmp.y;
-        As[(innerColA * 4 + 2) * BM + innerRowA + offset] = tmp.z;
-        As[(innerColA * 4 + 3) * BM + innerRowA + offset] = tmp.w;
+        As[smemA(innerRowA + offset, innerColA * 4 + 0)] = tmp.x;
+        As[smemA(innerRowA + offset, innerColA * 4 + 1)] = tmp.y;
+        As[smemA(innerRowA + offset, innerColA * 4 + 2)] = tmp.z;
+        As[smemA(innerRowA + offset, innerColA * 4 + 3)] = tmp.w;
     }
     // Strided float4 load of B
     for (uint offset = 0; offset + rowStrideB <= BK; offset += rowStrideB) {
         reinterpret_cast<float4 *>(
-            &Bs[(innerRowB + offset) * BN + innerColB * 4])[0] =
+            &Bs[smemB(innerRowB + offset, innerColB * 4)])[0] =
             reinterpret_cast<const float4 *>(
                 &B[(innerRowB + offset) * N + innerColB * 4])[0];
     }
@@ -78,25 +85,38 @@ __device__ void processFromSmem(float *regM, float *regN, float *threadResults,
                                  const uint warpRow, const uint warpCol,
                                  const uint threadRowInWarp,
                                  const uint threadColInWarp) {
-    // loop: 0...BK:
-    //     loop: 0... 
+    using namespace cute;
+    constexpr auto smemA = make_layout(make_shape(Int<BM>{}, Int<BK>{}),
+                                      make_stride(Int<1>{}, Int<BM>{}));
+    constexpr auto smemB = make_layout(make_shape(Int<BK>{}, Int<BN>{}),
+                                      make_stride(Int<BN>{}, Int<1>{}));
+    // (subtile, element) -> register index; packed within each thread.
+    constexpr auto regA = make_layout(make_shape(Int<WMITER>{}, Int<TM>{}),
+                                     make_stride(Int<TM>{}, Int<1>{}));
+    constexpr auto regB = make_layout(make_shape(Int<WNITER>{}, Int<TN>{}),
+                                     make_stride(Int<TN>{}, Int<1>{}));
+    constexpr auto accum = make_layout(make_shape(Int<WMITER * TM>{}, Int<WNITER * TN>{}),
+                                      make_stride(Int<WNITER * TN>{}, Int<1>{}));
+    // The same packed register coordinates map to separated matrix patches.
+    constexpr auto rows = make_layout(make_shape(Int<WMITER>{}, Int<TM>{}),
+                                     make_stride(Int<WSUBM>{}, Int<1>{}));
+    constexpr auto cols = make_layout(make_shape(Int<WNITER>{}, Int<TN>{}),
+                                     make_stride(Int<WSUBN>{}, Int<1>{}));
+    const uint rowBase = warpRow * WM + threadRowInWarp * TM;
+    const uint colBase = warpCol * WN + threadColInWarp * TN;
     for (uint dotIdx = 0; dotIdx < BK; ++dotIdx) {
         // ── Phase 1: Load ALL regM values for all WMITER subtile rows ──
         // This front-loads the SMEM reads so FMAs can overlap with loads
         for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
             for (uint i = 0; i < TM; ++i) {
-                // FIX THIS: load from transposed As
-                // Address: As[dotIdx * BM + warpRow*WM + wSubRowIdx*WSUBM + threadRowInWarp*TM + i]
-                regM[wSubRowIdx * TM + i] = As[dotIdx * BM + warpRow * WM + wSubRowIdx * WSUBM + threadRowInWarp * TM + i];
+                regM[regA(wSubRowIdx, i)] = As[smemA(rowBase + rows(wSubRowIdx, i), dotIdx)];
             }
         }
 
         // ── Phase 2: Load ALL regN values for all WNITER subtile cols ──
         for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
             for (uint i = 0; i < TN; ++i) {
-                // FIX THIS: load from Bs
-                // Address: Bs[dotIdx * BN + warpCol*WN + wSubColIdx*WSUBN + threadColInWarp*TN + i]
-                regN[wSubColIdx * TN + i] = Bs[dotIdx * BN + warpCol * WN + wSubColIdx * WSUBN + threadColInWarp * TN + i];
+                regN[regB(wSubColIdx, i)] = Bs[smemB(dotIdx, colBase + cols(wSubColIdx, i))];
             }
         }
 
@@ -106,10 +126,9 @@ __device__ void processFromSmem(float *regM, float *regN, float *threadResults,
             for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
                 for (uint resIdxM = 0; resIdxM < TM; ++resIdxM) {
                     for (uint resIdxN = 0; resIdxN < TN; ++resIdxN) {
-                        // FIX THIS: accumulate outer product
-                        // threadResults index: (wSubRowIdx*TM + resIdxM) * (WNITER*TN) + wSubColIdx*TN + resIdxN
-                        // value: regM[wSubRowIdx*TM + resIdxM] * regN[wSubColIdx*TN + resIdxN]
-                        threadResults[(wSubRowIdx*TM + resIdxM) * (WNITER*TN) + wSubColIdx*TN + resIdxN] += regM[wSubRowIdx*TM + resIdxM] * regN[wSubColIdx*TN + resIdxN];
+                        const auto m = regA(wSubRowIdx, resIdxM);
+                        const auto n = regB(wSubColIdx, resIdxN);
+                        threadResults[accum(m, n)] += regM[m] * regN[n];
                     }
                 }
             }
@@ -164,10 +183,9 @@ __global__ void __launch_bounds__(NUM_THREADS)
     //   threadColInWarp = tid_in_warp % (WSUBN / TN)
     //   threadRowInWarp = tid_in_warp / (WSUBN / TN)
 
-    // TODO: Calculate thread position within warp
-    const uint threadIdxInWarp = threadIdx.x % 32;   // FIX THIS
-    const uint threadColInWarp = threadIdxInWarp % (WSUBN / TN);   // FIX THIS
-    const uint threadRowInWarp = threadIdxInWarp / (WSUBN / TN);   // FIX THIS
+    const uint threadIdxInWarp = threadIdx.x % 32;
+    const uint threadColInWarp = threadIdxInWarp % (WSUBN / TN);
+    const uint threadRowInWarp = threadIdxInWarp / (WSUBN / TN);
 
     // ─── Shared memory ───────────────────────────────────────────────
 
@@ -181,7 +199,7 @@ __global__ void __launch_bounds__(NUM_THREADS)
 
     A += cRow * BM * K;
     B += cCol * BN;
-    C += (cRow*BM + warpRow*WM) * N + (cCol * BN + warpCol * WN) ;  // FIX THIS: advance to (cRow*BM + warpRow*WM, cCol*BN + warpCol*WN)
+    C += (cRow * BM + warpRow * WM) * N + cCol * BN + warpCol * WN;
 
     // ─── SMEM loading indices (same strided float4 pattern) ──────────
 
@@ -217,24 +235,26 @@ __global__ void __launch_bounds__(NUM_THREADS)
         __syncthreads();
     }
 
-    // ─── Write back results ──────────────────────────────────────────
-    //
-    // C was already advanced to this warp's region.
-    // Iterate over WMITER × WNITER subtiles, write TM × TN per subtile.
-    // Use float4 for the inner dimension (resIdxN += 4).
-
+    // Each thread owns four TM x TN patches in its warp tile.
+    using namespace cute;
+    constexpr auto accum = make_layout(
+        make_shape(Int<WMITER>{}, Int<WNITER>{}, Int<TM>{}, Int<TN>{}),
+        make_stride(Int<TM * WNITER * TN>{}, Int<TN>{}, Int<WNITER * TN>{}, Int<1>{}));
+    const auto output = make_layout(make_shape(Int<WM>{}, Int<WN>{}),
+                                    make_stride(N, Int<1>{}));
+    constexpr auto rows = make_layout(make_shape(Int<WMITER>{}, Int<TM>{}),
+                                     make_stride(Int<WSUBM>{}, Int<1>{}));
+    constexpr auto cols = make_layout(make_shape(Int<WNITER>{}, Int<TN>{}),
+                                     make_stride(Int<WSUBN>{}, Int<1>{}));
     for (uint wSubRowIdx = 0; wSubRowIdx < WMITER; ++wSubRowIdx) {
         for (uint wSubColIdx = 0; wSubColIdx < WNITER; ++wSubColIdx) {
-            // FIX THIS: advance C_interim to current subtile
-            // C_interim = C + wSubRowIdx * WSUBM * N + wSubColIdx * WSUBN
-            float *C_interim = C + wSubRowIdx * WSUBM * N + wSubColIdx * WSUBN;
 
             for (uint resIdxM = 0; resIdxM < TM; resIdxM += 1) {
                 for (uint resIdxN = 0; resIdxN < TN; resIdxN += 4) {
-                    const uint outIdx = (threadRowInWarp * TM + resIdxM) * N
-                                      + threadColInWarp * TN + resIdxN;
-                    const uint resultIdx = (wSubRowIdx * TM + resIdxM) * (WNITER * TN)
-                                         + wSubColIdx * TN + resIdxN;
+                    const auto outIdx = output(
+                        threadRowInWarp * TM + rows(wSubRowIdx, resIdxM),
+                        threadColInWarp * TN + cols(wSubColIdx, resIdxN));
+                    const auto resultIdx = accum(wSubRowIdx, wSubColIdx, resIdxM, resIdxN);
                     float4 result = make_float4(
                         alpha * threadResults[resultIdx],
                         alpha * threadResults[resultIdx + 1],
@@ -243,13 +263,13 @@ __global__ void __launch_bounds__(NUM_THREADS)
                     // When beta is zero, C need not contain initialized values.
                     if (beta != 0.0f) {
                         const float4 previous =
-                            *reinterpret_cast<const float4 *>(&C_interim[outIdx]);
+                            *reinterpret_cast<const float4 *>(&C[outIdx]);
                         result.x += beta * previous.x;
                         result.y += beta * previous.y;
                         result.z += beta * previous.z;
                         result.w += beta * previous.w;
                     }
-                    *reinterpret_cast<float4 *>(&C_interim[outIdx]) = result;
+                    *reinterpret_cast<float4 *>(&C[outIdx]) = result;
                 }
             }
         }
